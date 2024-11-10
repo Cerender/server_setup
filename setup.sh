@@ -163,4 +163,60 @@ UrlRoot=/cockpit
 EOL
 
 # Configure NGINX reverse proxy
-log "Confi
+log "Configuring NGINX reverse proxy..."
+cat > /etc/nginx/sites-available/custom_sites.conf <<EOL
+server {
+    listen 80;
+    server_name $SERVER_NAME;
+
+    # Redirect HTTP to HTTPS
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name $SERVER_NAME;
+
+    # SSL configuration
+    ssl_certificate /etc/letsencrypt/live/$CERT_DIR/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$CERT_DIR/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    # Cockpit reverse proxy
+    location /cockpit/ {
+        proxy_pass http://127.0.0.1:9090/cockpit/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+
+        # Handle WebSocket connections
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        gzip off;
+    }
+
+    # Ensure NGINX buffers large requests properly
+    client_max_body_size 10M;
+}
+EOL
+
+# Enable the NGINX site configuration
+log "Enabling NGINX site configuration..."
+ln -sf /etc/nginx/sites-available/custom_sites.conf /etc/nginx/sites-enabled/
+
+# Test NGINX configuration
+log "Testing NGINX configuration..."
+nginx -t
+
+# Reload NGINX to apply changes
+log "Reloading NGINX..."
+systemctl reload nginx
+
+# Final message
+log "Setup completed successfully!"
