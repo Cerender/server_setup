@@ -13,15 +13,15 @@ MOUNT_POINT=${MOUNT_POINT:-/mnt/foundry}
 read -p "Enter Username [jason]: " USERNAME
 USERNAME=${USERNAME:-jason}
 
-read -p "Enter UID [3001]: " UID
-UID=${UID:-3001}
+read -p "Enter User UID [3001]: " USER_UID
+USER_UID=${USER_UID:-3001}
 
-read -p "Enter GID [3001]: " GID
-GID=${GID:-3001}
+read -p "Enter User GID [3001]: " USER_GID
+USER_GID=${USER_GID:-3001}
 
 # Create User and Group
-sudo addgroup --gid $GID $USERNAME
-sudo adduser --uid $UID --gid $GID $USERNAME
+sudo addgroup --gid $USER_GID $USERNAME
+sudo adduser --uid $USER_UID --gid $USER_GID $USERNAME
 
 # Install NFS Client Packages
 sudo apt update
@@ -172,4 +172,3 @@ echo -e "\nGenerated Nginx configuration blocks:"
 echo "$NGINX_CONFIG"
 
 echo -e "\nPlease add the above Nginx configuration blocks to your Nginx server configuration file."
-
