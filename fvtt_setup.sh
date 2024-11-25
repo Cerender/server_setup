@@ -13,6 +13,9 @@ MOUNT_POINT=${MOUNT_POINT:-/mnt/foundry}
 read -e -p "Enter Username [jason]: " -i "jason" USERNAME
 USERNAME=${USERNAME:-jason}
 
+read -e -p "Enter Group name [jason]: " -i "jason" GROUPNAME
+GROUPNAME=${GROUPNAME:-jason}
+
 read -e -p "Enter User UID [3001]: " -i "3001" USER_UID
 USER_UID=${USER_UID:-3001}
 
@@ -74,7 +77,7 @@ do
         continue
     fi
 
-    SERVICE_NAME="foundry-${INSTANCE_NAME}.service"
+    SERVICE_NAME="fvtt-${INSTANCE_NAME}.service"
     SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME"
 
     FVTT_VTT_DIR="$INSTANCE_DIR/fvtt_vtt"
@@ -124,11 +127,17 @@ After=network.target remote-fs.target
 RequiresMountsFor=$MOUNT_POINT
 
 [Service]
-Type=simple
 User=$USERNAME
+Group=$GROUPNAME
 WorkingDirectory=$FVTT_VTT_DIR
 ExecStart=/usr/bin/node $FVTT_VTT_DIR/resources/app/main.js --dataPath=$FVTT_DATA_DIR
-Restart=on-failure
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=$INSTANCE_NAME
+
+#StandardOutput=syslog
+#StandardError=syslog
+SyslogIdentifier=fvtt_$INSTANCE_NAME
 
 [Install]
 WantedBy=multi-user.target
