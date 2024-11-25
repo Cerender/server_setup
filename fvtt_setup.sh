@@ -1,22 +1,22 @@
 #!/bin/bash
 
 # Prompt for Variables
-read -p "Enter TrueNAS IP Address [192.168.42.240]: " TRUENAS_IP
+read -e -p "Enter TrueNAS IP Address [192.168.42.240]: " -i "192.168.42.240" TRUENAS_IP
 TRUENAS_IP=${TRUENAS_IP:-192.168.42.240}
 
-read -p "Enter NFS Export Path [/mnt/TrueNAS/Foundry]: " NFS_EXPORT
+read -e -p "Enter NFS Export Path [/mnt/TrueNAS/Foundry]: " -i "/mnt/TrueNAS/Foundry" NFS_EXPORT
 NFS_EXPORT=${NFS_EXPORT:-/mnt/TrueNAS/Foundry}
 
-read -p "Enter Mount Point [/mnt/foundry]: " MOUNT_POINT
+read -e -p "Enter Mount Point [/mnt/foundry]: " -i "/mnt/foundry" MOUNT_POINT
 MOUNT_POINT=${MOUNT_POINT:-/mnt/foundry}
 
-read -p "Enter Username [jason]: " USERNAME
+read -e -p "Enter Username [jason]: " -i "jason" USERNAME
 USERNAME=${USERNAME:-jason}
 
-read -p "Enter User UID [3001]: " USER_UID
+read -e -p "Enter User UID [3001]: " -i "3001" USER_UID
 USER_UID=${USER_UID:-3001}
 
-read -p "Enter User GID [3001]: " USER_GID
+read -e -p "Enter User GID [3001]: " -i "3001" USER_GID
 USER_GID=${USER_GID:-3001}
 
 # Create User and Group
