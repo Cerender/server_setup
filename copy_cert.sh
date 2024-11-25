@@ -5,8 +5,8 @@ read -e -p "Enter the domain name associated with your SSL certificate [fvtt.hom
 DOMAIN_NAME=${DOMAIN_NAME:-fvtt.home.cerender.me}
 
 # Define source certificate paths based on the provided domain name
-CERT_SRC="/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem"
-KEY_SRC="/etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem"
+CERT_SRC="/etc/letsencrypt/archive/$DOMAIN_NAME/fullchain.pem"
+KEY_SRC="/etc/letsencrypt/archive/$DOMAIN_NAME/privkey.pem"
 
 # Prompt for Variables (ensure these match the ones used in your setup script)
 read -e -p "Enter Mount Point [/mnt/foundry]: " -i "/mnt/foundry" MOUNT_POINT
