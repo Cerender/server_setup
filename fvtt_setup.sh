@@ -168,9 +168,3 @@ EOL
 done
 
 echo "Setup completed successfully."
-
-# Output Nginx configuration
-echo -e "\nGenerated Nginx configuration blocks:"
-echo "$NGINX_CONFIG"
-
-echo -e "\nPlease add the above Nginx configuration blocks to your Nginx server configuration file."
