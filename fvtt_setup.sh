@@ -22,9 +22,24 @@ USER_UID=${USER_UID:-3001}
 read -e -p "Enter User GID [3001]: " -i "3001" USER_GID
 USER_GID=${USER_GID:-3001}
 
-# Create User and Group
-sudo addgroup --gid $USER_GID $USERNAME
-sudo adduser --uid $USER_UID --gid $USER_GID $USERNAME
+read -e -p "Enter the domain name associated with your SSL certificate [fvtt.home.cerender.me]: " -i "fvtt.home.cerender.me" DOMAIN_NAME
+DOMAIN_NAME=${DOMAIN_NAME:-fvtt.home.cerender.me}
+
+CERT_SRC="/etc/letsencrypt/archive/$DOMAIN_NAME/fullchain.pem"
+KEY_SRC="/etc/letsencrypt/archive/$DOMAIN_NAME/privkey.pem"
+
+# Create User and Group if they do not exist
+if ! getent group $GROUPNAME > /dev/null 2>&1; then
+    sudo addgroup --gid $USER_GID $GROUPNAME
+else
+    echo "Group $GROUPNAME already exists."
+fi
+
+if ! id -u $USERNAME > /dev/null 2>&1; then
+    sudo adduser --uid $USER_UID --gid $USER_GID $USERNAME
+else
+    echo "User $USERNAME already exists."
+fi
 
 # Install NFS Client Packages
 sudo apt update
@@ -32,104 +47,119 @@ sudo apt install -y nfs-common
 
 # Create Mount Point Directory
 sudo mkdir -p $MOUNT_POINT
-sudo chown $USERNAME:$USERNAME $MOUNT_POINT
+sudo chown $USERNAME:$GROUPNAME $MOUNT_POINT
 
 # Backup fstab
 sudo cp /etc/fstab /etc/fstab.bak
 
-# Add NFS Mount to fstab
-echo "$TRUENAS_IP:$NFS_EXPORT $MOUNT_POINT nfs4 defaults,_netdev,bg 0 0" | sudo tee -a /etc/fstab
+# Add NFS Mount to fstab if not already present
+FSTAB_LINE="$TRUENAS_IP:$NFS_EXPORT $MOUNT_POINT nfs4 defaults,_netdev,bg 0 0"
+if ! grep -qs "^$FSTAB_LINE" /etc/fstab; then
+    echo "$FSTAB_LINE" | sudo tee -a /etc/fstab
+else
+    echo "NFS mount already present in /etc/fstab."
+fi
 
 # Mount NFS Share
 sudo mount -a
 
 # Verify Mount
-if mountpoint -q $MOUNT_POINT; then
-    echo "NFS Share mounted successfully at $MOUNT_POINT"
-else
+if ! mountpoint -q $MOUNT_POINT; then
     echo "Failed to mount NFS Share."
     exit 1
 fi
 
-
-# install node.js version 20 if needed
+# Install Node.js version 20 if needed
 if ! command -v node &> /dev/null; then
     echo "Node.js is not installed. Installing..."
     curl -fsSL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh
     sudo -E bash nodesource_setup.sh
     sudo apt-get install -y nodejs
     rm nodesource_setup.sh
-else
-    echo "Node.js is already installed."
 fi
-
 
 # Find Directories Starting with 'fvtt_'
 INSTANCE_DIRS=($(find $MOUNT_POINT -maxdepth 1 -type d -name 'fvtt_*' -printf '%f\n'))
 
 if [ ${#INSTANCE_DIRS[@]} -eq 0 ]; then
-    echo "No FoundryVTT instances found in $MOUNT_POINT."
+    echo "No Foundry VTT instances found in $MOUNT_POINT."
     exit 1
 fi
 
-# Setup FoundryVTT Instances
+# Setup FoundryVTT Instances and Handle Certificates
 for DIR_NAME in "${INSTANCE_DIRS[@]}"
 do
     INSTANCE_DIR="$MOUNT_POINT/$DIR_NAME"
     
-    # Extract instance name and port number from directory name
-    # Expected format: fvtt_<instance_name>_#<port_number>
-    if [[ $DIR_NAME =~ ^fvtt_([a-zA-Z0-9_]+)_#([0-9]+)$ ]]; then
+    if [[ $DIR_NAME =~ ^fvtt_([a-zA-Z0-9_]+)_([0-9]+)$ ]]; then
         INSTANCE_NAME="${BASH_REMATCH[1]}"
         PORT_NUMBER="${BASH_REMATCH[2]}"
     else
-        echo "Directory $DIR_NAME does not match the expected format. Skipping."
+        echo "Directory $DIR_NAME does not match the expected format 'fvtt_<name>_<port>'. Skipping."
         continue
     fi
 
-    SERVICE_NAME="fvtt-${INSTANCE_NAME}.service"
-    SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME"
-
     FVTT_VTT_DIR="$INSTANCE_DIR/fvtt_vtt"
     FVTT_DATA_DIR="$INSTANCE_DIR/fvtt_data"
+    CONFIG_DIR="$FVTT_DATA_DIR/Config"
+    SERVICE_NAME="fvtt-${INSTANCE_NAME}.service"
 
-    # Check if fvtt_vtt and fvtt_data directories exist
-    if [ -d "$FVTT_VTT_DIR" ] && [ -d "$FVTT_DATA_DIR" ]; then
-        echo "Setting up service for instance: $INSTANCE_NAME on port $PORT_NUMBER"
+    # Ensure Config directory exists
+    sudo mkdir -p "$CONFIG_DIR"
+    sudo chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR"
 
-        # Update options.json file
-        OPTIONS_JSON="$FVTT_DATA_DIR/Config/options.json"
-
-        sudo mkdir -p "$(dirname "$OPTIONS_JSON")"
-
-        # Create or update options.json
+    # Update options.json if it doesn't exist
+    OPTIONS_JSON="$CONFIG_DIR/options.json"
+    if [ -f "$OPTIONS_JSON" ]; then
+        echo "options.json already exists for instance $INSTANCE_NAME. Skipping creation."
+    else
         sudo bash -c "cat > $OPTIONS_JSON" <<EOL
 {
   "dataPath": "$FVTT_DATA_DIR",
   "port": $PORT_NUMBER,
-  "routePrefix": "/$INSTANCE_NAME",
-  "hostname": "127.0.0.1",
+  "routePrefix": null,
+  "compressStatic": true,
+  "fullscreen": false,
+  "hostname": null,
+  "localHostname": null,
+  "protocol": null,
+  "proxyPort": null,
   "proxySSL": false,
-  "sslCert": "",
-  "sslKey": "",
+  "sslCert": "$CONFIG_DIR/fullchain.pem",
+  "sslKey": "$CONFIG_DIR/privkey.pem",
   "updateChannel": "stable",
   "language": "en.core",
   "fullscreen": false,
   "upnp": false,
-  "awtConfig": null,
+  "upnpLeaseDuration": null,
   "awsConfig": null,
+  "compressSocket": true,
+  "cssTheme": "foundry",
+  "deleteNEDB": true,
+  "hotReload": false,
+  "passwordSalt": null,
   "serviceConfig": null,
-  "xframeOptions": null,
-  "noUpdate": false,
-  "adminKey": null,
-  "proxyPort": null,
-  "proxyBypass": false
+  "telemetry": false
 }
 EOL
+        sudo chown $USERNAME:$GROUPNAME "$OPTIONS_JSON"
+    fi
 
-        sudo chown $USERNAME:$USERNAME "$OPTIONS_JSON"
+    # Copy Certificates if they don't exist
+    if [ ! -f "$CONFIG_DIR/fullchain.pem" ] || [ ! -f "$CONFIG_DIR/privkey.pem" ]; then
+        echo "Copying certificates for instance $INSTANCE_NAME..."
+        sudo cp "$CERT_SRC" "$CONFIG_DIR/fullchain.pem"
+        sudo cp "$KEY_SRC" "$CONFIG_DIR/privkey.pem"
+        sudo chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR/fullchain.pem" "$CONFIG_DIR/privkey.pem"
+    else
+        echo "Certificates already exist for instance $INSTANCE_NAME."
+    fi
 
-        # Create systemd service file
+    # Create and Configure Systemd Service if it doesn't exist
+    SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME"
+    if [ -f "$SERVICE_FILE" ]; then
+        echo "Service file $SERVICE_FILE already exists. Skipping creation."
+    else
         sudo bash -c "cat > $SERVICE_FILE" <<EOL
 [Unit]
 Description=FoundryVTT Instance $INSTANCE_NAME Service
@@ -143,28 +173,28 @@ WorkingDirectory=$FVTT_VTT_DIR
 ExecStart=/usr/bin/node $FVTT_VTT_DIR/resources/app/main.js --dataPath=$FVTT_DATA_DIR
 Restart=always
 RestartSec=3
-Environment=NODE_ENV=$INSTANCE_NAME
-
-#StandardOutput=syslog
-#StandardError=syslog
-SyslogIdentifier=fvtt_$INSTANCE_NAME
 
 [Install]
 WantedBy=multi-user.target
 EOL
-
-        # Enable and start the service
-        sudo systemctl daemon-reload
-        sudo systemctl enable $SERVICE_NAME
-        sudo systemctl start $SERVICE_NAME
-
-        # Check service status
-        sudo systemctl status $SERVICE_NAME --no-pager
-
-
-    else
-        echo "Skipping $DIR_NAME: Required directories not found."
     fi
+
+    # Enable and Restart Service
+    sudo systemctl daemon-reload
+    sudo systemctl enable "$SERVICE_NAME"
+    sudo systemctl restart "$SERVICE_NAME"
+    sudo systemctl status "$SERVICE_NAME" --no-pager
+
+    # Check if service is listening on the correct port
+    echo "Waiting for service to start..."
+    sleep 5
+    if ss -tulwn | grep ":$PORT_NUMBER " > /dev/null; then
+        echo "Instance $INSTANCE_NAME is listening on port $PORT_NUMBER."
+    else
+        echo "Instance $INSTANCE_NAME is not listening on port $PORT_NUMBER."
+    fi
+
+    echo "Instance $INSTANCE_NAME setup completed."
 done
 
-echo "Setup completed successfully."
+echo "All setups completed successfully."
