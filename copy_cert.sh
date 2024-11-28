@@ -58,7 +58,7 @@ do
     sudo chown "$USERNAME:$USERNAME" "$CONFIG_DIR/privkey.pem"
 
     # Restart the service
-    SERVICE_NAME="foundry-${INSTANCE_NAME}.service"
+    SERVICE_NAME="fvtt-${INSTANCE_NAME}.service"
     echo "Restarting service $SERVICE_NAME..."
     sudo systemctl restart "$SERVICE_NAME"
 
