@@ -60,7 +60,8 @@ apt update
 
 # Install Cockpit
 log "Installing Cockpit..."
-apt -y install cockpit
+. /etc/os-release
+apt install -t ${VERSION_CODENAME}-backports cockpit
 
 # Create necessary directories
 log "Creating necessary directories..."
