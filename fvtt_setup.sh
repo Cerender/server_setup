@@ -51,6 +51,19 @@ else
     exit 1
 fi
 
+
+# install node.js version 20 if needed
+if ! command -v node &> /dev/null; then
+    echo "Node.js is not installed. Installing..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh
+    sudo -E bash nodesource_setup.sh
+    sudo apt-get install -y nodejs
+    rm nodesource_setup.sh
+else
+    echo "Node.js is already installed."
+fi
+
+
 # Find Directories Starting with 'fvtt_'
 INSTANCE_DIRS=($(find $MOUNT_POINT -maxdepth 1 -type d -name 'fvtt_*' -printf '%f\n'))
 
@@ -58,9 +71,6 @@ if [ ${#INSTANCE_DIRS[@]} -eq 0 ]; then
     echo "No FoundryVTT instances found in $MOUNT_POINT."
     exit 1
 fi
-
-# Initialize Nginx Config Blocks
-NGINX_CONFIG=""
 
 # Setup FoundryVTT Instances
 for DIR_NAME in "${INSTANCE_DIRS[@]}"
@@ -151,24 +161,7 @@ EOL
         # Check service status
         sudo systemctl status $SERVICE_NAME --no-pager
 
-        # Append to Nginx configuration
-        NGINX_CONFIG+="
-# $INSTANCE_NAME reverse proxy
-location /$INSTANCE_NAME/ {
-    proxy_pass http://127.0.0.1:$PORT_NUMBER/$INSTANCE_NAME/;
-    proxy_set_header Host \$host;
-    proxy_set_header X-Real-IP \$remote_addr;
-    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto \$scheme;
 
-    # Handle WebSocket connections
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade \$http_upgrade;
-    proxy_set_header Connection \"upgrade\";
-
-    gzip off;
-}
-"
     else
         echo "Skipping $DIR_NAME: Required directories not found."
     fi
