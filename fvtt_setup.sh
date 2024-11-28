@@ -25,8 +25,8 @@ USER_GID=${USER_GID:-3001}
 read -e -p "Enter the domain name associated with your SSL certificate [fvtt.home.cerender.me]: " -i "fvtt.home.cerender.me" DOMAIN_NAME
 DOMAIN_NAME=${DOMAIN_NAME:-fvtt.home.cerender.me}
 
-CERT_SRC="/etc/letsencrypt/archive/$DOMAIN_NAME/fullchain.pem"
-KEY_SRC="/etc/letsencrypt/archive/$DOMAIN_NAME/privkey.pem"
+CERT_SRC="/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem"
+KEY_SRC="/etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem"
 
 # Create User and Group if they do not exist
 if ! getent group $GROUPNAME > /dev/null 2>&1; then
@@ -72,10 +72,8 @@ fi
 # Install Node.js version 20 if needed
 if ! command -v node &> /dev/null; then
     echo "Node.js is not installed. Installing..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh
-    sudo -E bash nodesource_setup.sh
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
     sudo apt-get install -y nodejs
-    rm nodesource_setup.sh
 fi
 
 # Find Directories Starting with 'fvtt_'
@@ -108,58 +106,36 @@ do
     sudo mkdir -p "$CONFIG_DIR"
     sudo chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR"
 
-    # Update options.json if it doesn't exist
+    # Update options.json
     OPTIONS_JSON="$CONFIG_DIR/options.json"
-    if [ -f "$OPTIONS_JSON" ]; then
-        echo "options.json already exists for instance $INSTANCE_NAME. Skipping creation."
-    else
-        sudo bash -c "cat > $OPTIONS_JSON" <<EOL
+    sudo bash -c "cat > $OPTIONS_JSON" <<EOL
 {
   "dataPath": "$FVTT_DATA_DIR",
   "port": $PORT_NUMBER,
-  "routePrefix": null,
-  "compressStatic": true,
-  "fullscreen": false,
-  "hostname": null,
-  "localHostname": null,
-  "protocol": null,
-  "proxyPort": null,
+  "routePrefix": "/$INSTANCE_NAME",
+  "hostname": "0.0.0.0",
   "proxySSL": false,
   "sslCert": "$CONFIG_DIR/fullchain.pem",
   "sslKey": "$CONFIG_DIR/privkey.pem",
   "updateChannel": "stable",
   "language": "en.core",
   "fullscreen": false,
-  "upnp": false,
-  "upnpLeaseDuration": null,
-  "awsConfig": null,
-  "compressSocket": true,
-  "cssTheme": "foundry",
-  "deleteNEDB": true,
-  "hotReload": false,
-  "passwordSalt": null,
-  "serviceConfig": null,
-  "telemetry": false
+  "upnp": false
 }
 EOL
-        sudo chown $USERNAME:$GROUPNAME "$OPTIONS_JSON"
-    fi
+    sudo chown $USERNAME:$GROUPNAME "$OPTIONS_JSON"
 
-    # Copy Certificates if they don't exist
-    if [ ! -f "$CONFIG_DIR/fullchain.pem" ] || [ ! -f "$CONFIG_DIR/privkey.pem" ]; then
-        echo "Copying certificates for instance $INSTANCE_NAME..."
-        sudo cp "$CERT_SRC" "$CONFIG_DIR/fullchain.pem"
-        sudo cp "$KEY_SRC" "$CONFIG_DIR/privkey.pem"
-        sudo chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR/fullchain.pem" "$CONFIG_DIR/privkey.pem"
-    else
-        echo "Certificates already exist for instance $INSTANCE_NAME."
-    fi
+    # Copy Certificates
+    echo "Ensuring certificates are in place for instance $INSTANCE_NAME..."
+    sudo cp "$CERT_SRC" "$CONFIG_DIR/fullchain.pem"
+    sudo cp "$KEY_SRC" "$CONFIG_DIR/privkey.pem"
+    sudo chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR/fullchain.pem" "$CONFIG_DIR/privkey.pem"
 
     # Create and Configure Systemd Service if it doesn't exist
     SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME"
-    if [ -f "$SERVICE_FILE" ]; then
-        echo "Service file $SERVICE_FILE already exists. Skipping creation."
-    else
+
+    if [ ! -f "$SERVICE_FILE" ]; then
+        echo "Creating service file for instance $INSTANCE_NAME..."
         sudo bash -c "cat > $SERVICE_FILE" <<EOL
 [Unit]
 Description=FoundryVTT Instance $INSTANCE_NAME Service
@@ -177,12 +153,17 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOL
+        # Enable the service
+        sudo systemctl enable "$SERVICE_NAME"
+    else
+        echo "Service file for instance $INSTANCE_NAME already exists."
     fi
 
-    # Enable and Restart Service
+    # Restart Service
     sudo systemctl daemon-reload
-    sudo systemctl enable "$SERVICE_NAME"
     sudo systemctl restart "$SERVICE_NAME"
+
+    # Check service status
     sudo systemctl status "$SERVICE_NAME" --no-pager
 
     # Check if service is listening on the correct port
