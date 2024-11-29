@@ -31,32 +31,22 @@ prompt_with_default() {
 
 # Function to check if a group exists by name
 group_exists() {
-    local grp="$1"
-    getent group "$grp" > /dev/null 2>&1
-}
-
-# Function to check if a group exists by GID
-group_exists_gid() {
-    local gid="$1"
-    getent group | awk -F: '{print $3}' | grep -qw "$gid"
-}
-
-# Function to check if a user exists by name
-user_exists() {
-    local usr="$1"
-    getent passwd "$usr" > /dev/null 2>&1
+    getent group "$1" > /dev/null 2>&1
 }
 
 # Function to check if a UID is already in use
 uid_exists() {
-    local uid="$1"
-    getent passwd | awk -F: '{print $3}' | grep -qw "$uid"
+    getent passwd "$1" > /dev/null 2>&1
 }
 
 # Function to check if a GID is already in use
 gid_exists() {
-    local gid="$1"
-    getent group | awk -F: '{print $3}' | grep -qw "$gid"
+    getent group "$1" > /dev/null 2>&1
+}
+
+# Function to check if a user exists by name
+user_exists() {
+    id -u "$1" > /dev/null 2>&1
 }
 
 # =============================================================================
@@ -83,34 +73,19 @@ fi
 
 echo_info "Starting script..."
 
-# Prompt for TrueNAS IP
+# Prompt for required information
 TRUENAS_IP=$(prompt_with_default "Enter TrueNAS IP Address" "$PREDEF_TRUENAS_IP")
-
-# Prompt for TrueNAS NFS export path
 NFS_EXPORT=$(prompt_with_default "Enter NFS Export Path" "$PREDEF_NFS_EXPORT")
-
-# Prompt for Ubuntu server mount point
 MOUNT_POINT=$(prompt_with_default "Enter Mount Point" "$PREDEF_MOUNT_POINT")
-
-# Prompt for Username
 USERNAME=$(prompt_with_default "Enter Username" "$PREDEF_USERNAME")
-
-# Prompt for User UID
 USER_UID=$(prompt_with_default "Enter User UID" "$PREDEF_USER_UID")
-
-# Prompt for Group Name
 GROUPNAME=$(prompt_with_default "Enter Group name" "$PREDEF_GROUPNAME")
-
-# Prompt for Group GID
 GROUP_GID=$(prompt_with_default "Enter Group GID" "$PREDEF_GROUP_GID")
-
-# Prompt for Domain Name (FQDN)
 DOMAIN_NAME=$(prompt_with_default "Enter the domain name associated with your SSL certificate" "$PREDEF_DOMAIN_NAME")
 
-
 # Define source certificate paths based on the provided domain name
-CERT_SRC="/etc/letsencrypt/archive/$DOMAIN_NAME/fullchain.pem"
-KEY_SRC="/etc/letsencrypt/archive/$DOMAIN_NAME/privkey.pem"
+CERT_SRC="/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem"
+KEY_SRC="/etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem"
 
 # Validate Group GID availability
 if group_exists "$GROUPNAME"; then
@@ -198,64 +173,61 @@ fi
 
 echo_info "User and group setup completed successfully."
 
-
 # Check if nfs-common is installed
 if ! dpkg -l | grep -qw nfs-common; then
-    echo "Installing required package 'nfs-common'..."
-    sudo apt-get update
-    sudo apt-get install -y nfs-common
+    echo_info "Installing required package 'nfs-common'..."
+    apt-get update
+    apt-get install -y nfs-common
 else
-    echo "'nfs-common' is already installed."
+    echo_info "'nfs-common' is already installed."
 fi
 
 # Create the mount point if it doesn't exist
 if [ ! -d "$MOUNT_POINT" ]; then
-    echo "Creating mount point at $MOUNT_POINT..."
-    sudo mkdir -p "$MOUNT_POINT"
-    sudo chown "$USERNAME":"$GROUPNAME" "$MOUNT_POINT"
+    echo_info "Creating mount point at $MOUNT_POINT..."
+    mkdir -p "$MOUNT_POINT"
+    chown "$USERNAME":"$GROUPNAME" "$MOUNT_POINT"
 else
-    echo "Mount point $MOUNT_POINT already exists."
+    echo_info "Mount point $MOUNT_POINT already exists."
 fi
 
 # Backup the existing /etc/fstab
-echo "Backing up /etc/fstab to /etc/fstab.bak..."
-sudo cp /etc/fstab /etc/fstab.bak
+echo_info "Backing up /etc/fstab to /etc/fstab.bak..."
+cp /etc/fstab /etc/fstab.bak
 
 # Add NFS share to /etc/fstab if not already present
 FSTAB_ENTRY="$TRUENAS_IP:$NFS_EXPORT $MOUNT_POINT nfs defaults 0 0"
 if ! grep -Fxq "$FSTAB_ENTRY" /etc/fstab; then
-    echo "Adding NFS share to /etc/fstab..."
-    echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab
+    echo_info "Adding NFS share to /etc/fstab..."
+    echo "$FSTAB_ENTRY" >> /etc/fstab
 else
-    echo "NFS share is already present in /etc/fstab."
+    echo_info "NFS share is already present in /etc/fstab."
 fi
 
 # Mount the NFS share
-echo "Mounting the NFS share..."
-sudo mount -a
+echo_info "Mounting the NFS share..."
+mount -a
 
 # Verify if the mount was successful
 if mount | grep -q "$MOUNT_POINT"; then
-    echo "NFS share successfully mounted at $MOUNT_POINT."
+    echo_success "NFS share successfully mounted at $MOUNT_POINT."
 else
-    echo "Failed to mount NFS share at $MOUNT_POINT."
+    echo_error "Failed to mount NFS share at $MOUNT_POINT."
+    exit 1
 fi
 
-
 # Install Node.js version 20 if needed
-if ! command -v node &> /dev/null; then
-    echo "Node.js is not installed. Installing..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh
-    sudo -E bash nodesource_setup.sh
-    sudo apt-get install -y nodejs
-    rm nodesource_setup.sh
+if ! command -v node &> /dev/null || [[ "$(node -v)" != v20* ]]; then
+    echo_info "Node.js version 20 is not installed. Installing..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    apt-get install -y nodejs
 fi
 
 # Find Directories Starting with 'fvtt_'
-INSTANCE_DIRS=($(find $MOUNT_POINT -maxdepth 1 -type d -name 'fvtt_*' -printf '%f\n'))
+INSTANCE_DIRS=($(find "$MOUNT_POINT" -maxdepth 1 -type d -name 'fvtt_*' -exec basename {} \;))
 
 if [ ${#INSTANCE_DIRS[@]} -eq 0 ]; then
-    echo "No Foundry VTT instances found in $MOUNT_POINT."
+    echo_error "No Foundry VTT instances found in $MOUNT_POINT."
     exit 1
 fi
 
@@ -263,12 +235,12 @@ fi
 for DIR_NAME in "${INSTANCE_DIRS[@]}"
 do
     INSTANCE_DIR="$MOUNT_POINT/$DIR_NAME"
-    
+
     if [[ $DIR_NAME =~ ^fvtt_([a-zA-Z0-9_]+)_([0-9]+)$ ]]; then
         INSTANCE_NAME="${BASH_REMATCH[1]}"
         PORT_NUMBER="${BASH_REMATCH[2]}"
     else
-        echo "Directory $DIR_NAME does not match the expected format 'fvtt_<name>_<port>'. Skipping."
+        echo_error "Directory $DIR_NAME does not match the expected format 'fvtt_<name>_<port>'. Skipping."
         continue
     fi
 
@@ -276,19 +248,19 @@ do
     FVTT_DATA_DIR="$INSTANCE_DIR/fvtt_data"
     CONFIG_DIR="$FVTT_DATA_DIR/Config"
     SERVICE_NAME="fvtt-${INSTANCE_NAME}.service"
+    OPTIONS_JSON="$CONFIG_DIR/options.json"
 
     # Ensure Config directory exists
-    sudo mkdir -p "$CONFIG_DIR"
-    sudo chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR"
+    mkdir -p "$CONFIG_DIR"
+    chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR"
 
     # Update options.json
-    sudo bash -c "cat > $OPTIONS_JSON" <<EOL
+    cat > "$OPTIONS_JSON" <<EOL
 {
   "dataPath": "$FVTT_DATA_DIR",
   "port": $PORT_NUMBER,
   "routePrefix": null,
   "compressStatic": true,
-  "fullscreen": false,
   "hostname": null,
   "localHostname": null,
   "protocol": null,
@@ -298,7 +270,6 @@ do
   "sslKey": "privkey.pem",
   "updateChannel": "stable",
   "language": "en.core",
-  "fullscreen": false,
   "upnp": false,
   "upnpLeaseDuration": null,
   "awsConfig": null,
@@ -311,25 +282,24 @@ do
   "telemetry": false
 }
 EOL
-    
-    sudo chown $USERNAME:$GROUPNAME "$OPTIONS_JSON"
+    chown "$USERNAME:$GROUPNAME" "$OPTIONS_JSON"
 
     # Copy Certificates if they don't exist
     if [ ! -f "$CONFIG_DIR/fullchain.pem" ] || [ ! -f "$CONFIG_DIR/privkey.pem" ]; then
-        echo "Copying certificates for instance $INSTANCE_NAME..."
-        sudo cp "$CERT_SRC" "$CONFIG_DIR/fullchain.pem"
-        sudo cp "$KEY_SRC" "$CONFIG_DIR/privkey.pem"
-        sudo chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR/fullchain.pem" "$CONFIG_DIR/privkey.pem"
+        echo_info "Copying certificates for instance $INSTANCE_NAME..."
+        cp "$CERT_SRC" "$CONFIG_DIR/fullchain.pem"
+        cp "$KEY_SRC" "$CONFIG_DIR/privkey.pem"
+        chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR/fullchain.pem" "$CONFIG_DIR/privkey.pem"
     else
-        echo "Certificates already exist for instance $INSTANCE_NAME."
+        echo_info "Certificates already exist for instance $INSTANCE_NAME."
     fi
 
     # Create and Configure Systemd Service if it doesn't exist
     SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME"
     if [ -f "$SERVICE_FILE" ]; then
-        echo "Service file $SERVICE_FILE already exists. Skipping creation."
+        echo_info "Service file $SERVICE_FILE already exists. Skipping creation."
     else
-        sudo bash -c "cat > $SERVICE_FILE" <<EOL
+        cat > "$SERVICE_FILE" <<EOL
 [Unit]
 Description=FoundryVTT Instance $INSTANCE_NAME Service
 After=network.target remote-fs.target
@@ -349,24 +319,24 @@ EOL
     fi
 
     # Enable and Restart Service
-    sudo systemctl daemon-reload
-    sudo systemctl enable "$SERVICE_NAME"
-    sudo systemctl restart "$SERVICE_NAME"
-    sudo systemctl status "$SERVICE_NAME" --no-pager
+    systemctl daemon-reload
+    systemctl enable "$SERVICE_NAME"
+    systemctl restart "$SERVICE_NAME"
+    systemctl status "$SERVICE_NAME" --no-pager
 
     # Check if service is listening on the correct port
-    echo "Waiting for service to start..."
+    echo_info "Waiting for service to start..."
     sleep 5
     if ss -tulwn | grep ":$PORT_NUMBER " > /dev/null; then
-        echo "Instance $INSTANCE_NAME is listening on port $PORT_NUMBER."
+        echo_success "Instance $INSTANCE_NAME is listening on port $PORT_NUMBER."
     else
-        echo "Instance $INSTANCE_NAME is not listening on port $PORT_NUMBER."
+        echo_error "Instance $INSTANCE_NAME is not listening on port $PORT_NUMBER."
     fi
 
-    echo "Instance $INSTANCE_NAME setup completed."
+    echo_info "Instance $INSTANCE_NAME setup completed."
 done
 
-echo "All setups completed successfully."
+echo_success "All setups completed successfully."
 
 # =============================================================================
 # End of Script
