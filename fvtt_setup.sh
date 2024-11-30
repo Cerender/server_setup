@@ -53,7 +53,7 @@ user_exists() {
 # =============================================================================
 # Predefined Default Values
 # =============================================================================
-PREDEF_USERNAME="fvtt"
+PREDEF_USERNAME="jason"
 PREDEF_GROUPNAME="fvtt_nfs"
 PREDEF_USER_UID=3000
 PREDEF_GROUP_GID=3003
@@ -138,24 +138,13 @@ else
     fi
 
     # Define Home Directory and Shell
-    DEFAULT_HOME="/home/$USERNAME"
-    DEFAULT_SHELL="/bin/bash"
+    DEFAULT_HOME="/nonexistent"
+    DEFAULT_SHELL="/usr/sbin/nologin"
 
-    # Prompt for Home Directory
-    HOME_DIR=$(prompt_with_default "Enter Home Directory" "$DEFAULT_HOME")
-
-    # Prompt for Default Shell
-    USER_SHELL=$(prompt_with_default "Enter Default Shell" "$DEFAULT_SHELL")
-
-    # Create the user
-    echo_info "Creating user '$USERNAME' with UID $USER_UID, GID $GROUP_GID..."
-    useradd -u "$USER_UID" -g "$GROUPNAME" -m -d "$HOME_DIR" -s "$USER_SHELL" "$USERNAME"
-    echo_success "User '$USERNAME' created successfully."
-
-    # Set password for the user
-    echo_info "Setting password for user '$USERNAME'..."
-    passwd "$USERNAME"
-    echo_success "Password set successfully for user '$USERNAME'."
+    # Create the user as a service account
+    echo_info "Creating service account user '$USERNAME' with UID $USER_UID, GID $GROUP_GID..."
+    useradd -u "$USER_UID" -g "$GROUPNAME" -M -d "$DEFAULT_HOME" -s "$DEFAULT_SHELL" "$USERNAME" -r
+    echo_success "Service account user '$USERNAME' created successfully."
 fi
 
 echo_info "User and group setup completed successfully."
@@ -179,8 +168,10 @@ else
 fi
 
 # Backup the existing /etc/fstab
-echo_info "Backing up /etc/fstab to /etc/fstab.bak..."
-cp /etc/fstab /etc/fstab.bak
+if [ ! -f /etc/fstab.bak ]; then
+    echo_info "Backing up /etc/fstab to /etc/fstab.bak..."
+    cp /etc/fstab /etc/fstab.bak
+fi
 
 # Add NFS share to /etc/fstab if not already present
 FSTAB_ENTRY="$TRUENAS_IP:$NFS_EXPORT $MOUNT_POINT nfs defaults 0 0"
