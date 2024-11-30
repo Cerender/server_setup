@@ -56,18 +56,14 @@ prompt_with_validation() {
         fi
     done
     
-    while true; do
-        read -e -p "$prompt_key [$default_value]: " user_input
-        user_input="${user_input:-$default_value}"
-        
-        case "$prompt_key" in
-            "TRUENAS_IP") validate_input "$user_input" ip ;;
-            "NFS_EXPORT"|"MOUNT_POINT") validate_input "$user_input" path ;;
-            "USER_UID") validate_input "$user_input" uid ;;
-            "GROUP_GID") validate_input "$user_input" gid ;;
-            *) break ;;
-        esac
-    done
+    read -e -p "$prompt_key [$default_value]: " -i "$default_value" user_input
+    
+    case "$prompt_key" in
+        "TRUENAS_IP") validate_input "$user_input" ip ;;
+        "NFS_EXPORT"|"MOUNT_POINT") validate_input "$user_input" path ;;
+        "USER_UID") validate_input "$user_input" uid ;;
+        "GROUP_GID") validate_input "$user_input" gid ;;
+    esac
     
     echo "$user_input"
 }
