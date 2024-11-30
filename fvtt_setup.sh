@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # =============================================================================
 # Function Definitions
@@ -36,12 +37,12 @@ group_exists() {
 
 # Function to check if a UID is already in use
 uid_exists() {
-    getent passwd "$1" > /dev/null 2>&1
+    getent passwd | awk -F: '{print $3}' | grep -qw "$1"
 }
 
 # Function to check if a GID is already in use
 gid_exists() {
-    getent group "$1" > /dev/null 2>&1
+    getent group | awk -F: '{print $3}' | grep -qw "$1"
 }
 
 # Function to check if a user exists by name
@@ -87,6 +88,12 @@ DOMAIN_NAME=$(prompt_with_default "Enter the domain name associated with your SS
 CERT_SRC="/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem"
 KEY_SRC="/etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem"
 
+# Check if certificate files exist
+if [ ! -f "$CERT_SRC" ] || [ ! -f "$KEY_SRC" ]; then
+    echo_error "Certificate files not found at $CERT_SRC and $KEY_SRC."
+    exit 1
+fi
+
 # Validate Group GID availability
 if group_exists "$GROUPNAME"; then
     EXISTING_GID=$(getent group "$GROUPNAME" | cut -d: -f3)
@@ -105,12 +112,7 @@ else
     # Create the group
     echo_info "Creating group '$GROUPNAME' with GID $GROUP_GID..."
     groupadd -g "$GROUP_GID" "$GROUPNAME"
-    if [ $? -eq 0 ]; then
-        echo_success "Group '$GROUPNAME' created successfully."
-    else
-        echo_error "Failed to create group '$GROUPNAME'."
-        exit 1
-    fi
+    echo_success "Group '$GROUPNAME' created successfully."
 fi
 
 # Validate User UID availability
@@ -123,14 +125,9 @@ if user_exists "$USERNAME"; then
     fi
 
     if [ "$EXISTING_GID" -ne "$GROUP_GID" ]; then
-        echo_info "User '$USERNAME' exists but is not in group '$GROUPNAME'. Adding to group..."
+        echo_info "User '$USERNAME' exists but is not in group '$GROUPNAME'. Changing primary group..."
         usermod -g "$GROUPNAME" "$USERNAME"
-        if [ $? -eq 0 ]; then
-            echo_success "User '$USERNAME' added to group '$GROUPNAME'."
-        else
-            echo_error "Failed to add user '$USERNAME' to group '$GROUPNAME'."
-            exit 1
-        fi
+        echo_success "User '$USERNAME' primary group changed to '$GROUPNAME'."
     else
         echo_success "User '$USERNAME' already exists with UID $USER_UID and is in group '$GROUPNAME'."
     fi
@@ -153,22 +150,12 @@ else
     # Create the user
     echo_info "Creating user '$USERNAME' with UID $USER_UID, GID $GROUP_GID..."
     useradd -u "$USER_UID" -g "$GROUPNAME" -m -d "$HOME_DIR" -s "$USER_SHELL" "$USERNAME"
-    if [ $? -eq 0 ]; then
-        echo_success "User '$USERNAME' created successfully."
-    else
-        echo_error "Failed to create user '$USERNAME'."
-        exit 1
-    fi
+    echo_success "User '$USERNAME' created successfully."
 
     # Set password for the user
     echo_info "Setting password for user '$USERNAME'..."
     passwd "$USERNAME"
-    if [ $? -eq 0 ]; then
-        echo_success "Password set successfully for user '$USERNAME'."
-    else
-        echo_error "Failed to set password for user '$USERNAME'."
-        exit 1
-    fi
+    echo_success "Password set successfully for user '$USERNAME'."
 fi
 
 echo_info "User and group setup completed successfully."
@@ -322,7 +309,13 @@ EOL
     systemctl daemon-reload
     systemctl enable "$SERVICE_NAME"
     systemctl restart "$SERVICE_NAME"
-    systemctl status "$SERVICE_NAME" --no-pager
+
+    # Check if service is active
+    if systemctl is-active --quiet "$SERVICE_NAME"; then
+        echo_success "Service $SERVICE_NAME is running."
+    else
+        echo_error "Service $SERVICE_NAME failed to start."
+    fi
 
     # Check if service is listening on the correct port
     echo_info "Waiting for service to start..."
