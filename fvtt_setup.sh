@@ -231,7 +231,7 @@ do
 
     # Ensure Config directory exists
     mkdir -p "$CONFIG_DIR"
-    chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR"
+    # chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR"
 
     # Update options.json
     cat > "$OPTIONS_JSON" <<EOL
@@ -268,7 +268,7 @@ EOL
         echo_info "Copying certificates for instance $INSTANCE_NAME..."
         cp "$CERT_SRC" "$CONFIG_DIR/fullchain.pem"
         cp "$KEY_SRC" "$CONFIG_DIR/privkey.pem"
-        chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR/fullchain.pem" "$CONFIG_DIR/privkey.pem"
+        #chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR/fullchain.pem" "$CONFIG_DIR/privkey.pem"
     else
         echo_info "Certificates already exist for instance $INSTANCE_NAME."
     fi
