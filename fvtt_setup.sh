@@ -1,3 +1,4 @@
+
 #!/bin/bash
 set -e
 
@@ -53,9 +54,9 @@ user_exists() {
 # =============================================================================
 # Predefined Default Values
 # =============================================================================
-PREDEF_USERNAME="jason"
+PREDEF_USERNAME="fvtt"
 PREDEF_GROUPNAME="fvtt_nfs"
-PREDEF_USER_UID=3000
+PREDEF_USER_UID=3001
 PREDEF_GROUP_GID=3003
 PREDEF_DOMAIN_NAME="$(hostname).home.cerender.me"
 PREDEF_TRUENAS_IP="192.168.42.240"
