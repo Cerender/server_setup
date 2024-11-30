@@ -1,3 +1,4 @@
+
 #!/bin/bash
 set -e
 
@@ -260,7 +261,7 @@ do
   "telemetry": false
 }
 EOL
-    chown "$USERNAME:$GROUPNAME" "$OPTIONS_JSON"
+    # chown "$USERNAME:$GROUPNAME" "$OPTIONS_JSON"
 
     # Copy Certificates if they don't exist
     if [ ! -f "$CONFIG_DIR/fullchain.pem" ] || [ ! -f "$CONFIG_DIR/privkey.pem" ]; then
