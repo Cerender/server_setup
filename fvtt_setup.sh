@@ -228,11 +228,12 @@ do
     SERVICE_NAME="fvtt-${INSTANCE_NAME}.service"
     OPTIONS_JSON="$CONFIG_DIR/options.json"
 
-    # Ensure Config directory exists (as jason user)
-    sudo -u "$USERNAME" mkdir -p "$CONFIG_DIR"
+    # Ensure Config directory exists
+    mkdir -p "$CONFIG_DIR"
+    chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR"
 
-    # Update options.json (as jason user)
-    sudo -u "$USERNAME" bash -c "cat > '$OPTIONS_JSON'" <<EOL
+    # Update options.json
+    cat > "$OPTIONS_JSON" <<EOL
 {
   "dataPath": "$FVTT_DATA_DIR",
   "port": $PORT_NUMBER,
@@ -259,12 +260,14 @@ do
   "telemetry": false
 }
 EOL
+    chown "$USERNAME:$GROUPNAME" "$OPTIONS_JSON"
 
-    # Copy Certificates if they don't exist (as jason user)
+    # Copy Certificates if they don't exist
     if [ ! -f "$CONFIG_DIR/fullchain.pem" ] || [ ! -f "$CONFIG_DIR/privkey.pem" ]; then
         echo_info "Copying certificates for instance $INSTANCE_NAME..."
-        sudo -u "$USERNAME" cp "$CERT_SRC" "$CONFIG_DIR/fullchain.pem"
-        sudo -u "$USERNAME" cp "$KEY_SRC" "$CONFIG_DIR/privkey.pem"
+        cp "$CERT_SRC" "$CONFIG_DIR/fullchain.pem"
+        cp "$KEY_SRC" "$CONFIG_DIR/privkey.pem"
+        chown "$USERNAME:$GROUPNAME" "$CONFIG_DIR/fullchain.pem" "$CONFIG_DIR/privkey.pem"
     else
         echo_info "Certificates already exist for instance $INSTANCE_NAME."
     fi
